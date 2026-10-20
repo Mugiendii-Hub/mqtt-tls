@@ -1,0 +1,42 @@
+# Mosquitto access rules (installed to /etc/mosquitto/acl by ./install.sh).
+# Topic layout: <device-id>/<kind>, kind = status | points (device -> server)
+#                                          cmd | cfg     (server -> device)
+# A user with no rules here can do nothing.
+
+# ---- Per-device logins (new firmware): username = device id = topic prefix.
+# A device can only publish its own status/points and read its own cmd/cfg.
+pattern write %u/status
+pattern write %u/points
+pattern read  %u/cmd
+pattern read  %u/cfg
+
+# ---- Legacy shared device login. Every device in the field uses it until the
+# firmware update (FIRMWARE.md). Limited to device topics; no $SYS, nothing else.
+user admin
+topic readwrite +/status
+topic readwrite +/points
+topic readwrite +/cmd
+topic readwrite +/cfg
+
+# ---- Server-side relays: read device data, send commands/config
+user relay-mqtt
+topic read  +/status
+topic write +/cmd
+
+user relay-flowhub
+topic read  +/status
+topic read  +/points
+topic write +/cmd
+topic write +/cfg
+
+# The flowhub relay run from a laptop (client id flowhub_relay_local)
+user relay-desktop
+topic read  +/status
+topic read  +/points
+topic write +/cmd
+topic write +/cfg
+
+# ---- Monitoring (/root/monitoring mqtt-logger): read-only, everything
+user monitoring
+topic read #
+topic read $SYS/#

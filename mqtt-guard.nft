@@ -1,0 +1,31 @@
+#!/usr/sbin/nft -f
+# MQTT brute-force guard (from /root/mqtt, installed by install.sh).
+# Its own table: it never touches Docker's rules, and loading it does not
+# flush anything else. Any IP opening more than 20 new connections a minute
+# to port 1883 is dropped for an hour. Real devices connect a few times an hour.
+# Blocked now:  nft list set inet mqtt_guard blocked4
+# Unblock one:  nft delete element inet mqtt_guard blocked4 { 1.2.3.4 }
+
+table inet mqtt_guard
+delete table inet mqtt_guard
+
+table inet mqtt_guard {
+    set blocked4 { type ipv4_addr; flags dynamic, timeout; timeout 1h; }
+    set blocked6 { type ipv6_addr; flags dynamic, timeout; timeout 1h; }
+    set rate4 { type ipv4_addr; flags dynamic, timeout; timeout 2m; }
+    set rate6 { type ipv6_addr; flags dynamic, timeout; timeout 2m; }
+
+    chain input {
+        type filter hook input priority filter - 5; policy accept;
+
+        # This server's own apps and Docker containers are never limited
+        tcp dport { 1883, 8883 } ip saddr { 127.0.0.0/8, 172.16.0.0/12 } accept
+        tcp dport { 1883, 8883 } ip6 saddr ::1 accept
+
+        tcp dport { 1883, 8883 } ip saddr @blocked4 drop
+        tcp dport { 1883, 8883 } ip6 saddr @blocked6 drop
+
+        tcp dport { 1883, 8883 } ct state new update @rate4 { ip saddr limit rate over 20/minute burst 20 packets } add @blocked4 { ip saddr } drop
+        tcp dport { 1883, 8883 } ct state new update @rate6 { ip6 saddr limit rate over 20/minute burst 20 packets } add @blocked6 { ip6 saddr } drop
+    }
+}
