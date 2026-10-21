@@ -87,9 +87,10 @@ environment **prod**, folder **`/mqtt`**. Never put them in code, a repo or chat
 
 The "old" rights exist only until the last old-firmware device is reflashed.
 
-Device logins are created by the server team: `./add-device.sh <id>` in
-`/root/mqtt` creates the login, stores the password in Infisical and shows it
-once.
+Device logins are created when the device is installed: the platform app
+calls the provisioning API with the new id and gets the password back once
+(`PROVISIONING.md`). The server team can do the same with
+`./add-device.sh <id>`. Either way the password is also kept in Infisical.
 
 **A new application needs a new login.** Send the server team:
 1. the username you want (e.g. `app-dashboard`),
@@ -195,7 +196,7 @@ Summary:
 | Host / port | `mqtt.nodewave.dev` / `8883` |
 | TLS | 1.2, verify the server, SNI on, CA file `isrgrootx1.pem` only |
 | Username = client id | the device id, e.g. `dev01` |
-| Password | per device, from the server team (`MQTT_DEVICE_<ID>_PASSWORD`) |
+| Password | per device, from the platform app when the device is installed (`MQTT_DEVICE_<ID>_PASSWORD`) |
 | Keepalive / clean session | 60 s / yes |
 | Last will | `<id>/up/status` = `offline`, QoS 1, retained |
 | On connect | publish `<id>/up/status` = `online`, QoS 1, retained; subscribe `<id>/down/#` |

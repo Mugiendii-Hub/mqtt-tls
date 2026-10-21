@@ -40,7 +40,8 @@ this repo. Access rules: [`acl`](acl). A login with no rules can do nothing.
 The relays read their login from `/etc/mqtt-relays/<unit>.env` (root only) via
 a drop-in `/etc/systemd/system/<unit>.service.d/mqtt-login.conf`.
 
-- New device: `./add-device.sh <id>` (creates the login, stores the password, prints it once)
+- New device: from the platform app via the provisioning API ([PROVISIONING.md](PROVISIONING.md)),
+  or on the server `./add-device.sh <id>`. Both create the login, store the password, return it once
 - Rotate a password: run `./add-device.sh <id>` again, then send the device the new one via `<id>/down/cfg` (FIRMWARE.md §4)
 - Change access rules: edit `acl`, then `./install.sh`
 
@@ -54,6 +55,7 @@ a drop-in `/etc/systemd/system/<unit>.service.d/mqtt-login.conf`.
 | `mosquitto-cert-hook.sh` | `/etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh` | copies renewed TLS certificate to Mosquitto |
 | `mqtt-ws.nginx` | `/etc/nginx/sites-available/mqtt-ws.nodewave.dev` | `wss://` proxy to the WebSocket listener |
 | `install.sh` | | installs acl + conf, restarts mosquitto |
+| `provision/` | `mqtt-provision.service`, nginx `mqtt-api.nodewave.dev` | device provisioning API; `provision/install.sh` |
 
 `/etc/mosquitto/mosquitto.conf` (Ubuntu's) still holds `listener 1883`,
 `password_file` and `allow_anonymous false`.

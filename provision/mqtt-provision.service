@@ -1,0 +1,28 @@
+# MQTT device provisioning API (/root/mqtt/provision, PROVISIONING.md).
+# Installed to /etc/systemd/system/ by provision/install.sh.
+[Unit]
+Description=MQTT device provisioning API (127.0.0.1:8790)
+After=network.target mosquitto.service
+
+[Service]
+ExecStart=/usr/bin/python3 -I /usr/local/lib/mqtt-provision/provision.py
+# MQTT_PROVISION_API_KEY (source: Infisical Nodewave /mqtt)
+EnvironmentFile=/etc/mqtt-provision/env
+# Nodewave machine identity, to store device passwords in Infisical
+EnvironmentFile=/root/.config/infisical-nodewave.env
+Restart=on-failure
+
+# Runs as root to edit the password file and reload mosquitto; everything
+# else is read-only
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/mosquitto
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
