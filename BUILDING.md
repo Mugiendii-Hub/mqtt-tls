@@ -220,8 +220,10 @@ Must-haves:
    New sensors or events get a new `up/` topic. No server change needed.
 5. Subscribe once to `<id>/down/#` and ignore `down/` topics it doesn't know.
 
-Connect result codes: `0` accepted · `4`/`5` wrong username/password or not
-allowed · a TLS error almost always means a wrong clock or a missing CA file.
+Connect result codes (A76xx `+CMQTTCONNECT`): `0` accepted · `30`/`31` wrong
+username/password or not allowed · `32`/`33` TLS handshake failed, almost
+always a wrong clock or a missing CA file. Check network registration with
+`AT+CEREG?`, not only `AT+CREG?` (Safaricom LTE reports `CREG: 0,6`).
 
 ## 6. Testing
 

@@ -108,9 +108,13 @@ AT+CMQTTPUB=0,1,60,1                      // QoS 1, timeout 60 s, retained
 The `tcp://` prefix is correct even for TLS on the A76xx; TLS comes from
 `AT+CMQTTACCQ=...,1` plus `AT+CMQTTSSLCFG`.
 
-Common connect results: `0` accepted · `4`/`5` wrong username/password or not
-allowed (check the id and password) · TLS/handshake errors almost always mean
-a wrong clock or a missing/wrong CA file.
+Common connect results (`+CMQTTCONNECT: 0,<code>`, the modem's own codes, seen
+on a SIM7672G): `0` accepted · `30`/`31` wrong username/password or not allowed
+(check the id and password) · `32`/`33` TLS handshake failed: almost always a
+wrong clock or a missing/wrong CA file.
+
+Registration: some networks (Safaricom LTE) answer `+CREG: 0,6` (SMS only)
+while `+CEREG: 0,1` says registered. Check `AT+CEREG?` and `AT+CGREG?` too.
 
 ## 4. Remote configuration (so this is the last reflash)
 
