@@ -10,6 +10,21 @@
 pattern write %u/up/#
 pattern read  %u/down/#
 
+# ---- First-boot provisioning (PROVISIONING.md). New firmware connects with
+# the shared login `provision` and client id imei-<IMEI>; it may only write
+# its claim and read its own reply, keyed on the client id. These patterns
+# apply to every login, but only provision/imei-*/... topics are ever used
+# and device ids cannot start with "imei-".
+pattern write provision/%c/up
+pattern read  provision/%c/down
+
+# The provisioning service: reads claims, sends each device its login, and
+# sees a device's first status message on its new login
+user relay-provision
+topic read  provision/+/up
+topic write provision/+/down
+topic read  +/up/status
+
 # ---- Legacy shared device login. Every device in the field uses it until the
 # firmware update (FIRMWARE.md). Old topics only; no $SYS, nothing else.
 user admin

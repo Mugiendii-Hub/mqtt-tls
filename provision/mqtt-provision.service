@@ -5,12 +5,15 @@ Description=MQTT device provisioning API (127.0.0.1:8790)
 After=network.target mosquitto.service
 
 [Service]
-ExecStart=/usr/bin/python3 -I /usr/local/lib/mqtt-provision/provision.py
-# MQTT_PROVISION_API_KEY (source: Infisical Nodewave /mqtt)
+ExecStart=/usr/local/lib/mqtt-provision/venv/bin/python -I /usr/local/lib/mqtt-provision/provision.py
+# MQTT_PROVISION_API_KEY, MQTT_RELAY_PROVISION_PASSWORD (source: Infisical Nodewave /mqtt)
 EnvironmentFile=/etc/mqtt-provision/env
 # Nodewave machine identity, to store device passwords in Infisical
 EnvironmentFile=/root/.config/infisical-nodewave.env
 Restart=on-failure
+# Pending and approved zero-touch claims: /var/lib/mqtt-provision/claims.json
+StateDirectory=mqtt-provision
+StateDirectoryMode=0700
 
 # Runs as root to edit the password file and reload mosquitto; everything
 # else is read-only

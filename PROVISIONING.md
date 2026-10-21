@@ -1,9 +1,16 @@
 # Device provisioning API
 
-For the platform app that installs devices. You enter a device id; the app
-calls this API; the API creates the device's MQTT login and returns its
-password **once**. The password is also kept in Infisical (Nodewave / prod /
-`/mqtt`, `MQTT_DEVICE_<ID>_PASSWORD`).
+For the platform app that installs devices. Every device has its own MQTT
+login (id + password), but nobody types or copies passwords: the server
+creates them and keeps a copy in Infisical (Nodewave / prod / `/mqtt`,
+`MQTT_DEVICE_<ID>_PASSWORD`).
+
+Two ways to give a device its login:
+
+| | How | Use for |
+|---|---|---|
+| **Zero-touch** (normal) | Flash the same firmware on every device. It boots, appears in the app as "new device, IMEI …"; you type its id and approve. The server sends the device its login; the device saves it and reboots. **The password never leaves the server and the device.** | all new devices |
+| Manual | `POST /v1/devices` returns the password once; you put it on the device yourself. | testing, special cases |
 
 | | |
 |---|---|
@@ -18,17 +25,64 @@ app's **server** (environment variable / secret store). Never put it in a
 browser page, a mobile app or a repo. The installer's screen talks to your
 backend; your backend calls this API.
 
-## Installing a device
+## Installing a device (zero-touch)
 
 ```
-installer enters id ──▶ your backend ──POST /v1/devices──▶ provisioning API
-                                                                  │ creates login, stores password
-installer sees password ◀── your backend ◀── id + password ◀──────┘
-        │
-        └─▶ put DEVICE_ID + MQTT_PASSWORD in the firmware's device_config.h, flash
+1. Device boots, no login yet. Connects with the shared first-boot login,
+   publishes a claim every minute:   provision/imei-<IMEI>/up
+
+2. Your app:  GET /v1/claims  ──▶  "IMEI 861234567890123, pending, seen 1 min ago"
+   Installer types the id (temp-001), presses Approve:
+              POST /v1/claims/861234567890123/approve  {"id":"temp-001"}
+
+3. Server creates login temp-001 with a random password and sends it to that
+   device only:                       provision/imei-<IMEI>/down
+
+4. Device saves id + password in flash, reboots, connects as temp-001.
+   The claim disappears from GET /v1/claims: done.
 ```
 
-## Endpoints
+The IMEI is printed on the modem / module label and on the device's debug
+output, so the installer can match the physical device to the claim.
+
+### List claims: `GET /v1/claims`
+
+```json
+{"claims": [
+  {"imei": "861234567890123", "status": "pending", "device_id": null,
+   "first_seen": "2026-10-21T08:07:50+00:00", "last_seen": "2026-10-21T08:12:50+00:00",
+   "approved_at": null, "fw": "1.1.0", "uid": "0123456789abcdef01234567"}
+]}
+```
+
+`status`: `pending` (waiting for approval) or `approved` (login sent, device
+not yet seen on it; normally gone within a minute). Newest first. A claim not
+seen for 30 days is dropped. `fw` and `uid` (STM32 chip id) are for display.
+
+### Approve: `POST /v1/claims/{imei}/approve`
+
+Body `{"id":"temp-001"}` (same id rules as below). `200`:
+
+```json
+{"claim": {"imei": "861234567890123", "status": "approved", "device_id": "temp-001", ...},
+ "device": {"id": "temp-001", "broker": {...}, "topics": {...}, "infisical_key": "..."}}
+```
+
+No password in the response: it goes to the device only. `404` no such claim,
+`409` id already exists or claim already approved.
+
+### Reject: `DELETE /v1/claims/{imei}`
+
+`204`. Removes the claim (e.g. an IMEI you don't recognise). If the device is
+still running it claims again within a minute.
+
+### Moving a device to another id
+
+Send `{"type":"reprovision"}` on `<old-id>/down/cfg` (the device forgets its
+login and claims again), then `DELETE /v1/devices/<old-id>`, then approve the
+new claim with the new id.
+
+## Endpoints for device logins
 
 ### Create a device: `POST /v1/devices`
 
@@ -59,8 +113,8 @@ not store it in your app unless you protect it; it stays retrievable from
 Infisical.
 
 Id rules: lowercase letters, digits and `-`, 2–31 characters, starting with
-a letter or digit. `admin`, `user`, `monitoring`, `relay-*` and `app-*` are
-reserved. Ids are never reused for a different device.
+a letter or digit. `admin`, `user`, `monitoring`, `provision`, `relay-*`,
+`app-*` and `imei-*` are reserved. Ids are never reused for a different device.
 
 ### Get a new password: `POST /v1/devices/{id}/rotate`
 
@@ -97,7 +151,7 @@ Always `{"error": "<message for a human>"}`.
 | `400` | bad or reserved id, or body not JSON |
 | `401` | missing or wrong API key |
 | `404` | no such device / no such endpoint |
-| `409` | device already exists (use rotate) |
+| `409` | device already exists (use rotate), or claim already approved |
 | `413` | body over 1 KB |
 | `429` | rate limit; wait and retry |
 | `500` / `502` | server or secret-store problem; nothing half-done is left behind on create |
@@ -136,6 +190,15 @@ def create_device(device_id):
     return r.json()
 ```
 
+## Security of the first-boot login
+
+Every firmware image contains the shared `provision` login
+(`MQTT_PROVISION_BOOTSTRAP_PASSWORD`). Assume it leaks. With it, someone can
+only publish claims (they show up in your list; reject what you don't
+recognise) and read the reply for the IMEI they connect as. They can never
+read device data, send commands, or see other claims. Only approve IMEIs that
+belong to devices in front of you.
+
 ## Server side (for the server team)
 
 - Code: `provision/` in this repo. `provision/install.sh` installs or updates it
@@ -144,3 +207,7 @@ def create_device(device_id):
   (`journalctl -u mqtt-provision`) show every create/rotate/delete and every
   wrong key, with the caller's IP, never a password.
 - `./add-device.sh <id>` still works on the server and does the same as create.
+- Claims: `/var/lib/mqtt-provision/claims.json`. The service talks to the
+  broker as `relay-provision` (`MQTT_RELAY_PROVISION_PASSWORD`).
+- Firmware: `mugiendii/A7672E_-Mqtt-module-stm32`. The first-boot password goes
+  in its `Core/Inc/fleet_config.h` (gitignored).

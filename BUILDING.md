@@ -82,15 +82,17 @@ environment **prod**, folder **`/mqtt`**. Never put them in code, a repo or chat
 | `relay-mqtt` | `mqtt_relay.service` (server) | `+/up/#` (+ old `+/status`) | `+/down/#` (+ old `+/cmd`) | `MQTT_RELAY_MQTT_PASSWORD` |
 | `relay-flowhub` | `flowhub-relay.service` (server) | `+/up/#` (+ old `+/status`, `+/points`) | `+/down/#` (+ old `+/cmd`, `+/cfg`) | `MQTT_RELAY_FLOWHUB_PASSWORD` |
 | `relay-desktop` | flowhub relay run from a laptop | same as relay-flowhub | same as relay-flowhub | `MQTT_RELAY_DESKTOP_PASSWORD` |
+| `provision` | first boot of every device (shared, in the firmware) | its own `provision/imei-<IMEI>/down` | its own `provision/imei-<IMEI>/up` | `MQTT_PROVISION_BOOTSTRAP_PASSWORD` |
+| `relay-provision` | the provisioning service | `provision/+/up`, `+/up/status` | `provision/+/down` | `MQTT_RELAY_PROVISION_PASSWORD` |
 | `monitoring` | Grafana mqtt-logger | everything incl. `$SYS/#` | nothing | `MQTT_MONITORING_PASSWORD` |
 | `admin` | **legacy**: devices on old firmware | old topics only | old topics only | not in Infisical, being retired |
 
 The "old" rights exist only until the last old-firmware device is reflashed.
 
-Device logins are created when the device is installed: the platform app
-calls the provisioning API with the new id and gets the password back once
-(`PROVISIONING.md`). The server team can do the same with
-`./add-device.sh <id>`. Either way the password is also kept in Infisical.
+Device logins are created when the device is installed, normally zero-touch:
+the device claims a login on first boot, you approve its IMEI with an id in
+the platform app, and the server sends the device its password directly
+(`PROVISIONING.md`). The password is also kept in Infisical.
 
 **A new application needs a new login.** Send the server team:
 1. the username you want (e.g. `app-dashboard`),
@@ -195,8 +197,9 @@ Summary:
 |---|---|
 | Host / port | `mqtt.nodewave.dev` / `8883` |
 | TLS | 1.2, verify the server, SNI on, CA file `isrgrootx1.pem` only |
-| Username = client id | the device id, e.g. `dev01` |
-| Password | per device, from the platform app when the device is installed (`MQTT_DEVICE_<ID>_PASSWORD`) |
+| Username = client id | the device id, e.g. `dev01`, **received on first boot and kept in flash** |
+| Password | per device, received on first boot with the id (zero-touch, `PROVISIONING.md`) |
+| First boot | user `provision`, client id `imei-<IMEI>`: claim on `provision/imei-<IMEI>/up`, login arrives on `provision/imei-<IMEI>/down` |
 | Keepalive / clean session | 60 s / yes |
 | Last will | `<id>/up/status` = `offline`, QoS 1, retained |
 | On connect | publish `<id>/up/status` = `online`, QoS 1, retained; subscribe `<id>/down/#` |

@@ -7,7 +7,7 @@
 set -euo pipefail
 id=${1:?usage: ./add-device.sh <device-id>}
 [[ $id =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || { echo "device id: lowercase letters, digits, '-' (2-31 chars)"; exit 1; }
-case $id in admin|user|monitoring|relay-*) echo "'$id' is reserved"; exit 1;; esac
+case $id in admin|user|monitoring|provision|relay-*|app-*|imei-*) echo "'$id' is reserved"; exit 1;; esac
 
 creds=/root/.config/infisical-nodewave.env
 get() { grep -E "^$1=" "$creds" | cut -d= -f2- | tr -d "\r" || true; }

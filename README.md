@@ -34,6 +34,8 @@ this repo. Access rules: [`acl`](acl). A login with no rules can do nothing.
 | `relay-mqtt` | `mqtt_relay.service` | read `+/up/#`, write `+/down/#` (+ old `+/status`, `+/cmd`) |
 | `relay-flowhub` | `flowhub-relay.service` | read `+/up/#`, write `+/down/#` (+ old `+/status` `+/points`, `+/cmd` `+/cfg`) |
 | `relay-desktop` | the flowhub relay run from a laptop (`flowhub_relay_local`) | same as relay-flowhub |
+| `provision` | first boot of every device (shared, in firmware) | only its own claim: write `provision/imei-<IMEI>/up`, read `.../down` |
+| `relay-provision` | `mqtt-provision.service` | read claims and `+/up/status`, write `provision/+/down` |
 | `monitoring` | `/root/monitoring` mqtt-logger | read everything incl. `$SYS`, write nothing |
 | `user` | unknown, never seen logging in | nothing (no rules) |
 
