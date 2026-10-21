@@ -18,15 +18,21 @@ the logins, is in [BUILDING.md](BUILDING.md).
 
 ## Logins and access
 
+Topics: `<device-id>/up/...` (device → server) and `<device-id>/down/...`
+(server → device); any name under them works without changing `acl`. Old
+firmware uses `<device-id>/status|points|cmd|cfg` until reflashed. The relays
+pick a device's topics from `MQTT_TOPIC_*` in their environment, so moving a
+device to the new layout is a relay config change, not code.
+
 Passwords live in Infisical (self-hosted, Nodewave / prod / `/mqtt`), never in
 this repo. Access rules: [`acl`](acl). A login with no rules can do nothing.
 
 | Login | Who | Can |
 |---|---|---|
-| `<device-id>` | one per device (new firmware) | publish own `status`/`points`, read own `cmd`/`cfg` |
-| `admin` | **legacy, shared by all devices** | device topics only (`+/status`, `+/points`, `+/cmd`, `+/cfg`) |
-| `relay-mqtt` | `mqtt_relay.service` | read `+/status`, write `+/cmd` |
-| `relay-flowhub` | `flowhub-relay.service` | read `+/status` `+/points`, write `+/cmd` `+/cfg` |
+| `<device-id>` | one per device (new firmware) | publish anything under own `<id>/up/`, read own `<id>/down/#` |
+| `admin` | **legacy, shared by all devices** | old device topics only (`+/status`, `+/points`, `+/cmd`, `+/cfg`) |
+| `relay-mqtt` | `mqtt_relay.service` | read `+/up/#`, write `+/down/#` (+ old `+/status`, `+/cmd`) |
+| `relay-flowhub` | `flowhub-relay.service` | read `+/up/#`, write `+/down/#` (+ old `+/status` `+/points`, `+/cmd` `+/cfg`) |
 | `relay-desktop` | the flowhub relay run from a laptop (`flowhub_relay_local`) | same as relay-flowhub |
 | `monitoring` | `/root/monitoring` mqtt-logger | read everything incl. `$SYS`, write nothing |
 | `user` | unknown, never seen logging in | nothing (no rules) |
@@ -35,7 +41,7 @@ The relays read their login from `/etc/mqtt-relays/<unit>.env` (root only) via
 a drop-in `/etc/systemd/system/<unit>.service.d/mqtt-login.conf`.
 
 - New device: `./add-device.sh <id>` (creates the login, stores the password, prints it once)
-- Rotate a password: run `./add-device.sh <id>` again, then send the device the new one via `<id>/cfg` (FIRMWARE.md §4)
+- Rotate a password: run `./add-device.sh <id>` again, then send the device the new one via `<id>/down/cfg` (FIRMWARE.md §4)
 - Change access rules: edit `acl`, then `./install.sh`
 
 ## Files

@@ -29,7 +29,7 @@ chown mosquitto:mosquitto /etc/mosquitto/passwd && chmod 600 /etc/mosquitto/pass
 systemctl reload mosquitto
 
 echo "Device login ready:   username = client id = $id"
-echo "Topics:               publish $id/status, $id/points   subscribe $id/cmd, $id/cfg"
+echo "Topics:               publish $id/up/<anything>   subscribe $id/down/#"
 echo "Password (also in Infisical /mqtt $key):"
 echo "  $pw"
 echo "Clear your terminal after copying it."

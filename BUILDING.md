@@ -26,23 +26,44 @@ Rules:
 ## 2. Topics
 
 Every device has one id: lowercase letters, digits and `-`. The id is its
-username, its client id and its topic prefix.
+username, its client id and its topic prefix. Each device owns two branches:
 
-| Topic | Direction | QoS | Retained | Content |
-|---|---|---|---|---|
-| `<id>/status` | device → server | 1 | yes | `online` / `offline` (last will) or a JSON state |
-| `<id>/points` | device → server | 0 or 1 | optional | measurements |
-| `<id>/cmd` | server → device | 1 | no | commands |
-| `<id>/cfg` | server → device | 1 | no | configuration (JSON with a `type` field) |
+```
+<id>/up/...     device → server   (the device publishes, apps read)
+<id>/down/...   server → device   (apps publish, the device reads)
+```
 
-Apps subscribe with wildcards (`+/status`, `+/points`) and publish to one
-device (`<id>/cmd`). Anything outside these four topic kinds is refused.
+**Any topic name can be added under `up/` or `down/` with no change on the
+server.** A device can only publish under its own `up/` and read its own
+`down/`; it can never touch another device's topics.
 
-**Adding topics.** Today a device may only use the four kinds above. A new kind
-(e.g. `<id>/alarms`, `<id>/gps`) must be added to the access rules (`acl` in
-`/root/mqtt`, then `./install.sh`) **before** firmware or apps use it.
-Otherwise it is silently dropped. Tell the server team the topic name,
-which side publishes it and which logins read it.
+Standard topics (use these names where they fit; add your own alongside):
+
+| Topic | QoS | Retained | Content |
+|---|---|---|---|
+| `<id>/up/status` | 1 | yes | `online` / `offline` (last will) or a JSON state |
+| `<id>/up/points` | 0 or 1 | optional | measurements / capability report |
+| `<id>/down/cmd` | 1 | no | commands |
+| `<id>/down/cfg` | 1 | no | configuration (JSON with a `type` field) |
+| *e.g.* `<id>/up/alarms`, `<id>/up/gps`, `<id>/down/schedule` | your choice | your choice | new topics: just use them |
+
+Naming: lowercase, words joined with `-` or `_`, no spaces, no leading `/`,
+no `+` or `#` in names. Sub-levels are fine (`<id>/up/sensors/temp`).
+
+How apps subscribe:
+
+| Subscribe to | Gets |
+|---|---|
+| `+/up/#` | everything from every device, including topics added later |
+| `+/up/alarms` | one kind from every device |
+| `dev01/up/#` | everything from one device |
+
+Apps send to one device at a time: publish `dev01/down/cmd`. Devices subscribe
+once to `<id>/down/#` and ignore topics they don't understand.
+
+**Old firmware** (shared `admin` login) still uses `<id>/status`, `<id>/points`,
+`<id>/cmd`, `<id>/cfg` until it is reflashed. Don't build anything new on
+those names.
 
 **The broker drops what a login may not do, without telling you.** A publish to
 a topic the login cannot write never arrives, and a subscribe to a topic it
@@ -57,12 +78,14 @@ environment **prod**, folder **`/mqtt`**. Never put them in code, a repo or chat
 
 | Username | For | Can read | Can write | Infisical key |
 |---|---|---|---|---|
-| `<device-id>` (e.g. `dev01`) | one device on new firmware | own `<id>/cmd`, `<id>/cfg` | own `<id>/status`, `<id>/points` | `MQTT_DEVICE_<ID>_PASSWORD` (e.g. `MQTT_DEVICE_DEV01_PASSWORD`) |
-| `relay-mqtt` | `mqtt_relay.service` (server) | `+/status` | `+/cmd` | `MQTT_RELAY_MQTT_PASSWORD` |
-| `relay-flowhub` | `flowhub-relay.service` (server) | `+/status`, `+/points` | `+/cmd`, `+/cfg` | `MQTT_RELAY_FLOWHUB_PASSWORD` |
-| `relay-desktop` | flowhub relay run from a laptop | `+/status`, `+/points` | `+/cmd`, `+/cfg` | `MQTT_RELAY_DESKTOP_PASSWORD` |
+| `<device-id>` (e.g. `dev01`) | one device on new firmware | own `<id>/down/#` | own `<id>/up/#` | `MQTT_DEVICE_<ID>_PASSWORD` (e.g. `MQTT_DEVICE_DEV01_PASSWORD`) |
+| `relay-mqtt` | `mqtt_relay.service` (server) | `+/up/#` (+ old `+/status`) | `+/down/#` (+ old `+/cmd`) | `MQTT_RELAY_MQTT_PASSWORD` |
+| `relay-flowhub` | `flowhub-relay.service` (server) | `+/up/#` (+ old `+/status`, `+/points`) | `+/down/#` (+ old `+/cmd`, `+/cfg`) | `MQTT_RELAY_FLOWHUB_PASSWORD` |
+| `relay-desktop` | flowhub relay run from a laptop | same as relay-flowhub | same as relay-flowhub | `MQTT_RELAY_DESKTOP_PASSWORD` |
 | `monitoring` | Grafana mqtt-logger | everything incl. `$SYS/#` | nothing | `MQTT_MONITORING_PASSWORD` |
-| `admin` | **legacy**: devices on old firmware | device topics | device topics | not in Infisical, being retired |
+| `admin` | **legacy**: devices on old firmware | old topics only | old topics only | not in Infisical, being retired |
+
+The "old" rights exist only until the last old-firmware device is reflashed.
 
 Device logins are created by the server team: `./add-device.sh <id>` in
 `/root/mqtt` creates the login, stores the password in Infisical and shows it
@@ -70,7 +93,8 @@ once.
 
 **A new application needs a new login.** Send the server team:
 1. the username you want (e.g. `app-dashboard`),
-2. exactly which topics it reads and which it writes,
+2. which topics it reads and writes (e.g. reads `+/up/alarms`, writes nothing;
+   or reads `+/up/#`, writes `+/down/cmd`). Ask for no more than it needs,
 3. where it runs (server, cloud, browser).
 
 They add it to the access rules (`acl`), create the password and store it in
@@ -86,6 +110,7 @@ Infisical under `MQTT_<NAME>_PASSWORD`. A login with no rules can do nothing.
 - [ ] Keepalive 60 s, automatic reconnect with back-off
 - [ ] Re-subscribe after every reconnect (or use a persistent session)
 - [ ] Commands to devices: QoS 1, not retained
+- [ ] Ignore topics you don't know (devices may add new `up/` topics at any time)
 - [ ] Handle `status` being retained: on subscribe you get the **last** state immediately, which may be old
 
 ### Python (paho-mqtt 2.x)
@@ -96,12 +121,12 @@ import paho.mqtt.client as mqtt
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        client.subscribe([("+/status", 1), ("+/points", 0)])  # re-subscribes on reconnect
+        client.subscribe("+/up/#", qos=1)                    # re-subscribes on reconnect
     else:
         print("connect refused:", reason_code)                # bad login or not allowed
 
 def on_message(client, userdata, msg):
-    device, kind = msg.topic.split("/", 1)
+    device, _up, kind = msg.topic.split("/", 2)              # dev01/up/alarms
     print(device, kind, msg.payload[:200])
 
 c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="app-example-laptop")
@@ -112,7 +137,7 @@ c.on_connect, c.on_message = on_connect, on_message
 c.connect("mqtt.nodewave.dev", 8883, keepalive=60)
 
 # send a command to one device
-c.publish("dev01/cmd", '{"action":"read"}', qos=1)
+c.publish("dev01/down/cmd", '{"action":"read"}', qos=1)
 c.loop_forever()
 ```
 
@@ -131,14 +156,14 @@ const client = mqtt.connect("mqtts://mqtt.nodewave.dev:8883", {
   reconnectPeriod: 5000,
 });
 
-client.on("connect", () => client.subscribe(["+/status", "+/points"], { qos: 1 }));
+client.on("connect", () => client.subscribe("+/up/#", { qos: 1 }));
 client.on("message", (topic, payload) => {
-  const [device, kind] = topic.split("/");
+  const [device, , kind] = topic.split("/");                 // dev01/up/alarms
   console.log(device, kind, payload.toString().slice(0, 200));
 });
 client.on("error", (err) => console.error("mqtt:", err.message)); // e.g. "Not authorized"
 
-client.publish("dev01/cmd", JSON.stringify({ action: "read" }), { qos: 1 });
+client.publish("dev01/down/cmd", JSON.stringify({ action: "read" }), { qos: 1 });
 ```
 
 ### Browser (mqtt.js over WebSocket)
@@ -154,7 +179,7 @@ const client = mqtt.connect("wss://mqtt-ws.nodewave.dev/mqtt", {
 **Anything shipped to a browser is public.** Whoever opens the page can read
 the login from it. So:
 
-- A browser app gets its **own read-only login** (e.g. reads `+/status`, writes
+- A browser app gets its **own read-only login** (e.g. reads `+/up/status`, writes
   nothing), never a relay login.
 - If the browser must **send commands**, send them to your backend over HTTPS.
   The backend checks who the user is and publishes with its own login.
@@ -172,23 +197,24 @@ Summary:
 | Username = client id | the device id, e.g. `dev01` |
 | Password | per device, from the server team (`MQTT_DEVICE_<ID>_PASSWORD`) |
 | Keepalive / clean session | 60 s / yes |
-| Last will | `<id>/status` = `offline`, QoS 1, retained |
-| On connect | publish `<id>/status` = `online`, QoS 1, retained; subscribe `<id>/cmd`, `<id>/cfg` |
+| Last will | `<id>/up/status` = `offline`, QoS 1, retained |
+| On connect | publish `<id>/up/status` = `online`, QoS 1, retained; subscribe `<id>/down/#` |
 
 Must-haves:
 
 1. **Clock first.** Sync time (network time `AT+CTZU=1` or NTP) before connecting.
    A clock at 1980/2000 fails every TLS handshake.
-2. **Store broker settings in flash** and accept new ones on `<id>/cfg`
+2. **Store broker settings in flash** and accept new ones on `<id>/down/cfg`
    (`{"type":"mqtt","host":…,"port":…,"username":…,"password":…,"apply_id":…}`).
    Save them only after a successful connect with them. After 3 failures, go
    back to the last settings that worked. Report `{"cfg_applied":…}` or
-   `{"cfg_failed":…}` on `<id>/status`. Ignore unknown `type` values.
+   `{"cfg_failed":…}` on `<id>/up/status`. Ignore unknown `type` values.
    This is what makes this the last reflash.
 3. **Back off on reconnect** (see §1). A device stuck in a fast reconnect
    loop blocks its own IP for an hour.
-4. Publish only to its own `<id>/status` and `<id>/points`. Anything else is
-   silently dropped.
+4. Publish only under its own `<id>/up/`. Anything else is silently dropped.
+   New sensors or events get a new `up/` topic. No server change needed.
+5. Subscribe once to `<id>/down/#` and ignore `down/` topics it doesn't know.
 
 Connect result codes: `0` accepted · `4`/`5` wrong username/password or not
 allowed · a TLS error almost always means a wrong clock or a missing CA file.
@@ -205,7 +231,7 @@ mosquitto_sub -h mqtt.nodewave.dev -p 8883 --capath /etc/ssl/certs \
 # act as a device (device login)
 curl -sO https://letsencrypt.org/certs/isrgrootx1.pem
 mosquitto_pub -h mqtt.nodewave.dev -p 8883 --cafile isrgrootx1.pem \
-  -u dev01 -P "$DEVICE_PASSWORD" -i dev01-test -t dev01/status -m test -q 1
+  -u dev01 -P "$DEVICE_PASSWORD" -i dev01-test -t dev01/up/status -m test -q 1
 ```
 
 (On macOS use `--cafile isrgrootx1.pem` for both; `/etc/ssl/certs` is Linux.)
