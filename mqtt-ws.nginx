@@ -1,0 +1,26 @@
+# wss://mqtt-ws.nodewave.dev/mqtt -> Mosquitto's local WebSocket listener.
+# Cloudflare proxied. Installed to /etc/nginx/sites-available/mqtt-ws.nodewave.dev;
+# certbot --nginx adds the 443 lines.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mqtt-ws.nodewave.dev;
+
+    # Restores the visitor's real IP from Cloudflare's CF-Connecting-IP header.
+    include /etc/nginx/cloudflare-realip.conf;
+
+    location = /mqtt {
+        proxy_pass http://127.0.0.1:9083;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host       $host;
+        # MQTT keeps the socket open; clients ping well inside this
+        proxy_read_timeout  1h;
+        proxy_send_timeout  1h;
+    }
+
+    location / {
+        return 404;
+    }
+}

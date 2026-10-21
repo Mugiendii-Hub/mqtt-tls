@@ -12,9 +12,9 @@ that, broker changes (new server, new password) need **no reflash**.
 | Client id | `0000023`, `A7672Client`, ... | the device id |
 | Changing any of the above later | reflash on site | `<device>/cfg` message over MQTT |
 
-Server status: per-device logins and the access rules are **live now**. The
-TLS port 8883 goes live once the `mqtt.nodewave.dev` DNS record exists (see
-README). Plain 1883 stays open until the last device has moved.
+Server status: per-device logins, the access rules and TLS on
+`mqtt.nodewave.dev:8883` are **live** (since 2026-10-21). Plain 1883 stays open
+until the last device has moved.
 
 ---
 

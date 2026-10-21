@@ -3,15 +3,16 @@
 Config and runbook for the server's MQTT broker (Mosquitto 2.0, systemd
 `mosquitto`). The broker itself runs from `/etc/mosquitto`; this repo is the
 source of truth for what Nodewave adds to it. Device-side changes are in
-[FIRMWARE.md](FIRMWARE.md).
+[FIRMWARE.md](FIRMWARE.md); how to build apps and firmware against it, with
+the logins, is in [BUILDING.md](BUILDING.md).
 
 ## Addresses
 
 | Address | For | Status |
 |---|---|---|
 | `157.173.107.18:1883` (plain) | field devices on old firmware | open, brute-force limited (below); closes after the firmware rollout |
-| `mqtts://mqtt.nodewave.dev:8883` (TLS) | devices on new firmware, remote apps | **pending DNS**: needs `mqtt.nodewave.dev` A record → 157.173.107.18, DNS only (grey cloud) |
-| `wss://mqtt-ws.nodewave.dev/mqtt` | browser apps | **pending DNS**: `mqtt-ws.nodewave.dev`, proxied; listener ready on 127.0.0.1:9083 |
+| `mqtts://mqtt.nodewave.dev:8883` (TLS) | devices on new firmware, remote apps | live since 2026-10-21 (Let's Encrypt, auto-renewed) |
+| `wss://mqtt-ws.nodewave.dev/mqtt` | browser apps | live since 2026-10-21 (nginx → 127.0.0.1:9083, Cloudflare proxied) |
 | `127.0.0.1:1883` | relays and apps on this server | live |
 | `127.0.0.1:1884` | ChirpStack's own broker (anonymous) | local only since 2026-10-20 |
 
@@ -44,6 +45,8 @@ a drop-in `/etc/systemd/system/<unit>.service.d/mqtt-login.conf`.
 | `acl` | `/etc/mosquitto/acl` | access rules |
 | `nodewave.conf` | `/etc/mosquitto/conf.d/nodewave.conf` | ACL, connection logging, WebSocket and TLS listeners |
 | `mqtt-guard.nft` | `/etc/nftables.d/mqtt-guard.nft` (`mqtt-guard.service`) | brute-force limit |
+| `mosquitto-cert-hook.sh` | `/etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh` | copies renewed TLS certificate to Mosquitto |
+| `mqtt-ws.nginx` | `/etc/nginx/sites-available/mqtt-ws.nodewave.dev` | `wss://` proxy to the WebSocket listener |
 | `install.sh` | | installs acl + conf, restarts mosquitto |
 
 `/etc/mosquitto/mosquitto.conf` (Ubuntu's) still holds `listener 1883`,
@@ -77,12 +80,11 @@ Sources: `/var/log/mosquitto/mosquitto.log` (Alloy) and the mqtt-logger
 service in `/root/monitoring`. Alerts: `DeviceSilent` (15 min),
 `MQTTBrokerUnreachable`, `MQTTLoggerDisconnected`.
 
-## Enabling TLS (once the DNS record exists)
+## Enabling TLS (done 2026-10-21; kept for rebuilding the server)
 
 1. `certbot certonly --nginx -d mqtt.nodewave.dev` (port 80 on that name answers the ACME challenge)
-2. Deploy hook so renewals reach Mosquitto, `/etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh`:
-   copy `fullchain.pem`/`privkey.pem` to `/etc/mosquitto/certs/mqtt.nodewave.dev/`
-   (owner mosquitto, 600) and `systemctl reload mosquitto`
+2. Install `mosquitto-cert-hook.sh` as `/etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh`
+   and run it once: `RENEWED_LINEAGE=/etc/letsencrypt/live/mqtt.nodewave.dev ./mosquitto-cert-hook.sh`
 3. `./install.sh` (it uncomments the `#TLS` lines when the certificate is present)
 4. Add `mqtt.nodewave.dev:8883` to `/root/monitoring/targets.d` (TLS check + cert expiry)
 5. Move `flowhub_relay_local` (laptop) to `relay-desktop` on 8883
