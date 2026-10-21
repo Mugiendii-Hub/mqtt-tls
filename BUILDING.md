@@ -35,10 +35,14 @@ username, its client id and its topic prefix.
 | `<id>/cmd` | server → device | 1 | no | commands |
 | `<id>/cfg` | server → device | 1 | no | configuration (JSON with a `type` field) |
 
-Known devices: `oceo2` (OCEO2 / flowhub), `rtu014` (RTU014).
-
 Apps subscribe with wildcards (`+/status`, `+/points`) and publish to one
-device (`oceo2/cmd`). Anything outside these four topic kinds is refused.
+device (`<id>/cmd`). Anything outside these four topic kinds is refused.
+
+**Adding topics.** Today a device may only use the four kinds above. A new kind
+(e.g. `<id>/alarms`, `<id>/gps`) must be added to the access rules (`acl` in
+`/root/mqtt`, then `./install.sh`) **before** firmware or apps use it.
+Otherwise it is silently dropped. Tell the server team the topic name,
+which side publishes it and which logins read it.
 
 **The broker drops what a login may not do, without telling you.** A publish to
 a topic the login cannot write never arrives, and a subscribe to a topic it
@@ -53,7 +57,7 @@ environment **prod**, folder **`/mqtt`**. Never put them in code, a repo or chat
 
 | Username | For | Can read | Can write | Infisical key |
 |---|---|---|---|---|
-| `<device-id>` (e.g. `oceo2`) | one device on new firmware | own `<id>/cmd`, `<id>/cfg` | own `<id>/status`, `<id>/points` | `MQTT_DEVICE_<ID>_PASSWORD` (e.g. `MQTT_DEVICE_OCEO2_PASSWORD`) |
+| `<device-id>` (e.g. `dev01`) | one device on new firmware | own `<id>/cmd`, `<id>/cfg` | own `<id>/status`, `<id>/points` | `MQTT_DEVICE_<ID>_PASSWORD` (e.g. `MQTT_DEVICE_DEV01_PASSWORD`) |
 | `relay-mqtt` | `mqtt_relay.service` (server) | `+/status` | `+/cmd` | `MQTT_RELAY_MQTT_PASSWORD` |
 | `relay-flowhub` | `flowhub-relay.service` (server) | `+/status`, `+/points` | `+/cmd`, `+/cfg` | `MQTT_RELAY_FLOWHUB_PASSWORD` |
 | `relay-desktop` | flowhub relay run from a laptop | `+/status`, `+/points` | `+/cmd`, `+/cfg` | `MQTT_RELAY_DESKTOP_PASSWORD` |
@@ -108,7 +112,7 @@ c.on_connect, c.on_message = on_connect, on_message
 c.connect("mqtt.nodewave.dev", 8883, keepalive=60)
 
 # send a command to one device
-c.publish("oceo2/cmd", '{"action":"read"}', qos=1)
+c.publish("dev01/cmd", '{"action":"read"}', qos=1)
 c.loop_forever()
 ```
 
@@ -134,7 +138,7 @@ client.on("message", (topic, payload) => {
 });
 client.on("error", (err) => console.error("mqtt:", err.message)); // e.g. "Not authorized"
 
-client.publish("oceo2/cmd", JSON.stringify({ action: "read" }), { qos: 1 });
+client.publish("dev01/cmd", JSON.stringify({ action: "read" }), { qos: 1 });
 ```
 
 ### Browser (mqtt.js over WebSocket)
@@ -165,7 +169,7 @@ Summary:
 |---|---|
 | Host / port | `mqtt.nodewave.dev` / `8883` |
 | TLS | 1.2, verify the server, SNI on, CA file `isrgrootx1.pem` only |
-| Username = client id | the device id, e.g. `oceo2` |
+| Username = client id | the device id, e.g. `dev01` |
 | Password | per device, from the server team (`MQTT_DEVICE_<ID>_PASSWORD`) |
 | Keepalive / clean session | 60 s / yes |
 | Last will | `<id>/status` = `offline`, QoS 1, retained |
@@ -196,12 +200,12 @@ From any computer with `mosquitto-clients`:
 ```bash
 # watch a device (uses an app login that can read it)
 mosquitto_sub -h mqtt.nodewave.dev -p 8883 --capath /etc/ssl/certs \
-  -u relay-desktop -P "$MQTT_PASSWORD" -t 'oceo2/#' -v
+  -u relay-desktop -P "$MQTT_PASSWORD" -t 'dev01/#' -v
 
 # act as a device (device login)
 curl -sO https://letsencrypt.org/certs/isrgrootx1.pem
 mosquitto_pub -h mqtt.nodewave.dev -p 8883 --cafile isrgrootx1.pem \
-  -u oceo2 -P "$DEVICE_PASSWORD" -i oceo2-test -t oceo2/status -m test -q 1
+  -u dev01 -P "$DEVICE_PASSWORD" -i dev01-test -t dev01/status -m test -q 1
 ```
 
 (On macOS use `--cafile isrgrootx1.pem` for both; `/etc/ssl/certs` is Linux.)

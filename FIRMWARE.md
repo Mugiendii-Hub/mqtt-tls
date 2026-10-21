@@ -21,12 +21,11 @@ until the last device has moved.
 ## 1. Device id = username = client id = topic prefix
 
 Pick one id per device and use it everywhere. Lowercase letters, digits and
-`-` only. The existing topic prefixes are the ids:
+`-` only. The examples below use `dev01`; replace it with the real id.
 
-| Device | Id | Topics |
+| Device id | Publishes | Subscribes |
 |---|---|---|
-| OCEO2 (flowhub) | `oceo2` | `oceo2/status`, `oceo2/points` (publish) · `oceo2/cmd`, `oceo2/cfg` (subscribe) |
-| RTU014 | `rtu014` | `rtu014/status` (publish) · `rtu014/cmd` (subscribe) |
+| `<id>` | `<id>/status`, `<id>/points` | `<id>/cmd`, `<id>/cfg` |
 
 The broker enforces this (`acl`): a device's login can **only** publish its own
 `status`/`points` and read its own `cmd`/`cfg`. Publishing anywhere else is
@@ -44,7 +43,7 @@ password on two devices.
 | Port | `8883` |
 | TLS | 1.2, verify the server certificate |
 | CA certificate | **ISRG Root X1** (Let's Encrypt root, valid until 2035). File: `isrgrootx1.pem` from https://letsencrypt.org/certs/isrgrootx1.pem |
-| Username / client id | the device id, e.g. `oceo2` |
+| Username / client id | the device id, e.g. `dev01` |
 | Password | per device (from the server team) |
 | Keepalive | 60 s |
 | Clean session | yes |
@@ -65,6 +64,9 @@ your module firmware revision; parameter numbering differs slightly between
 revisions.
 
 ```text
+// Example id: dev01. The numbers after topics/payloads are byte lengths:
+// recount them for the real id (e.g. "dev01/status" = 12, "pump-07/status" = 14).
+
 // --- once per device (or at every boot; it is idempotent) ---------------
 AT+CTZU=1                                 // take time from the network
 AT+CCLK?                                  // confirm the clock is not 1980/2000
@@ -79,23 +81,23 @@ AT+CSSLCFG="enableSNI",0,1
 
 // --- MQTT client 0 over TLS ---------------------------------------------
 AT+CMQTTSTART
-AT+CMQTTACCQ=0,"oceo2",1                  // client id = device id; 1 = TLS
+AT+CMQTTACCQ=0,"dev01",1                  // client id = device id; 1 = TLS
 AT+CMQTTSSLCFG=0,0                        // client 0 uses TLS context 0
 
 // last will: <id>/status = offline (retained)
-AT+CMQTTWILLTOPIC=0,12                    // then send: oceo2/status
+AT+CMQTTWILLTOPIC=0,12                    // then send: dev01/status
 AT+CMQTTWILLMSG=0,7,1                     // then send: offline   (QoS 1)
 
-AT+CMQTTCONNECT=0,"tcp://mqtt.nodewave.dev:8883",60,1,"oceo2","<password>"
+AT+CMQTTCONNECT=0,"tcp://mqtt.nodewave.dev:8883",60,1,"dev01","<password>"
 // expect: +CMQTTCONNECT: 0,0   (0 = accepted)
 
 // subscribe to commands and config
-AT+CMQTTSUBTOPIC=0,9,1                    // then send: oceo2/cmd
-AT+CMQTTSUBTOPIC=0,9,1                    // then send: oceo2/cfg
+AT+CMQTTSUBTOPIC=0,9,1                    // then send: dev01/cmd
+AT+CMQTTSUBTOPIC=0,9,1                    // then send: dev01/cfg
 AT+CMQTTSUB=0
 
 // publish (example: status online, retained)
-AT+CMQTTTOPIC=0,12                        // then send: oceo2/status
+AT+CMQTTTOPIC=0,12                        // then send: dev01/status
 AT+CMQTTPAYLOAD=0,6                       // then send: online
 AT+CMQTTPUB=0,1,60,1                      // QoS 1, timeout 60 s, retained
 ```
@@ -117,7 +119,7 @@ The device keeps its broker settings in flash and accepts new ones on
   "type": "mqtt",
   "host": "mqtt.nodewave.dev",
   "port": 8883,
-  "username": "oceo2",
+  "username": "dev01",
   "password": "<new password>",
   "apply_id": "2026-11-01-rotate"
 }
@@ -150,7 +152,7 @@ message per device) within seconds, which makes bench testing easy.
 
 On the bench, with the new firmware:
 
-1. Device connects: Grafana → MQTT → "Who connected" shows `user=oceo2` (not `admin`).
+1. Device connects: Grafana → MQTT → "Who connected" shows `user=dev01` (not `admin`).
 2. Its `status`/`points` appear in the message log and the Devices table.
 3. Send a command from the relay/app; the device acts on it.
 4. Pull the antenna or power: `<id>/status` turns `offline` (last will) and the
@@ -162,7 +164,7 @@ Equivalent check from any computer:
 ```bash
 curl -sO https://letsencrypt.org/certs/isrgrootx1.pem
 mosquitto_pub -h mqtt.nodewave.dev -p 8883 --cafile isrgrootx1.pem \
-  -u oceo2 -P '<password>' -i oceo2-test -t oceo2/status -m test -q 1
+  -u dev01 -P '<password>' -i dev01-test -t dev01/status -m test -q 1
 ```
 
 ## 7. Rollout
