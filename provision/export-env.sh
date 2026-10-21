@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints NAME=value lines for the given /mqtt secrets, for setting up a
 # development machine without copying values by hand. Run over SSH:
-#   (umask 077; ssh root@157.173.107.18 /root/mqtt/provision/export-env.sh \
+#   (umask 077; ssh root@mqtt.nodewave.dev /root/mqtt/provision/export-env.sh \
 #      MQTT_PROVISION_BOOTSTRAP_PASSWORD MQTT_PROVISION_API_KEY \
 #      MQTT_RELAY_DESKTOP_PASSWORD > ~/.config/nodewave.env)
 # Only names starting with MQTT_ are allowed.

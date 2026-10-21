@@ -199,6 +199,23 @@ recognise) and read the reply for the IMEI they connect as. They can never
 read device data, send commands, or see other claims. Only approve IMEIs that
 belong to devices in front of you.
 
+## Pairing a development app
+
+A development tool (e.g. the commissioning simulator on a laptop) gets the
+app keys without anyone copying them: the server team makes a one-time code,
+the tool trades it for its keys once.
+
+```bash
+# on the server: make a code (valid 15 minutes, one use)
+curl -s -X POST -H "Authorization: Bearer $MQTT_PROVISION_API_KEY" \
+  https://mqtt-api.nodewave.dev/v1/pair-codes        # {"code":"K7QM-4XPA","expires_in":900}
+```
+
+`POST /v1/pair {"code":"K7QM-4XPA"}` (no API key) returns
+`MQTT_PROVISION_API_KEY` and `MQTT_RELAY_DESKTOP_PASSWORD` once; the code is
+then gone. Codes are case- and dash-insensitive; after 10 wrong codes all
+open codes are dropped.
+
 ## Server side (for the server team)
 
 - Code: `provision/` in this repo. `provision/install.sh` installs or updates it

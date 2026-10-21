@@ -126,13 +126,17 @@ def store_password(device_id, password):
         raise ApiError(502, "could not store the password in the secret store")
 
 
-def read_password(device_id):
+def read_secret(name):
     status, data = _infisical(
-        "GET", "/api/v3/secrets/raw/" + secret_key(device_id)
+        "GET", "/api/v3/secrets/raw/" + name
         + f"?workspaceId={INF_PROJECT}&environment={INF_ENV}&secretPath={INF_PATH}")
     if status != 200:
-        raise ApiError(502, "could not read the password from the secret store")
+        raise ApiError(502, "could not read from the secret store")
     return data["secret"]["secretValue"]
+
+
+def read_password(device_id):
+    return read_secret(secret_key(device_id))
 
 
 def delete_password(device_id):
@@ -387,6 +391,50 @@ def start_mqtt():
     mqttc.loop_start()
 
 
+# ---- Pairing an app (one-time codes) ----------------------------------------
+# A development app (e.g. the commissioning simulator on a laptop) gets its keys
+# by entering a one-time code instead of someone copying them: POST
+# /v1/pair-codes (API key) makes a code, POST /v1/pair {"code"} (no key) trades
+# it for the keys once. Codes live in memory, expire after 15 minutes, and all
+# are dropped after 10 wrong codes.
+
+PAIR_KEYS = ("MQTT_PROVISION_API_KEY", "MQTT_RELAY_DESKTOP_PASSWORD")
+PAIR_TTL = 900
+PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O, 1/I
+pair_codes = {}                                      # sha256(code) -> expiry
+pair_failures = []                                   # times of wrong codes
+
+
+def _code_hash(code):
+    import hashlib
+    normal = re.sub(r"[^A-Z0-9]", "", str(code).upper())
+    return hashlib.sha256(normal.encode()).hexdigest()
+
+
+def new_pair_code():
+    code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(8))
+    with lock:
+        pair_codes[_code_hash(code)] = _now() + PAIR_TTL
+    return {"code": code[:4] + "-" + code[4:], "expires_in": PAIR_TTL}
+
+
+def pair(code):
+    with lock:
+        now = _now()
+        for h in [h for h, exp in pair_codes.items() if exp < now]:
+            del pair_codes[h]
+        if pair_codes.pop(_code_hash(code), None) is None:
+            pair_failures[:] = [t for t in pair_failures if t > now - PAIR_TTL] + [now]
+            if len(pair_failures) >= 10:
+                pair_codes.clear()
+                pair_failures.clear()
+                log.warning("10 wrong pairing codes: all codes dropped")
+            raise ApiError(403, "wrong or expired code")
+    keys = {"MQTT_PROVISION_API_KEY": API_KEY}
+    keys["MQTT_RELAY_DESKTOP_PASSWORD"] = read_secret("MQTT_RELAY_DESKTOP_PASSWORD")
+    return keys
+
+
 # ---- HTTP ------------------------------------------------------------------
 
 DEVICE_PATH = re.compile(r"^/v1/devices/([^/]+)(/rotate)?$")
@@ -427,12 +475,24 @@ class Handler(BaseHTTPRequestHandler):
     def _handle(self, method):
         if method == "GET" and self.path == "/healthz":
             return self._send(200, {"ok": True})
+        if method == "POST" and self.path == "/v1/pair":
+            try:
+                body = self._json_body()
+                keys = pair(body.get("code", "") if isinstance(body, dict) else "")
+            except ApiError as e:
+                log.warning("pairing refused from %s", self._client())
+                return self._send(e.status, {"error": e.message})
+            log.info("app paired from %s", self._client())
+            return self._send(200, keys)
         if not self._authorised():
             log.warning("unauthorised %s %s from %s", method, self.path, self._client())
             return self._send(401, {"error": "missing or wrong API key"})
         try:
             m = DEVICE_PATH.match(self.path)
             c = CLAIM_PATH.match(self.path)
+            if method == "POST" and self.path == "/v1/pair-codes":
+                log.info("pairing code issued (from %s)", self._client())
+                return self._send(201, new_pair_code())
             if method == "GET" and self.path == "/v1/claims":
                 with lock:
                     out = sorted((claim_view(k) for k in claims),
